@@ -1,5 +1,5 @@
 # basic-networking
-Code for my rudimentary python networking programs.
+This repository will organize the code for my rudimentary python networking programs.
 
 Please note that, as I am in the process of learning, my programs and scripts can appear poorly designed. For me, they simply serve a purpose.
 
