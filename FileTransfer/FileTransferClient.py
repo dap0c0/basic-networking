@@ -46,8 +46,17 @@ class FileTransferClient():
         (name, body) = (receive_name(),
                         receive_body())
         return (name, body)
+        
+    def write_data(self, filename, body):
+        assert isinstance(filename, str)
+        assert isinstance(body, str)
 
-# TODO
-# Need to create a function that calls all functions in order with keyword arguments
-        
-        
+        try:
+            with open(filename, "w") as file:
+                file.write(body)
+
+            return True
+
+        except FileNotFoundError as e:
+            print("The file %s does not exist: %s" % (filename, e))
+            return False
