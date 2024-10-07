@@ -1,7 +1,7 @@
 import socket
 import time
 
-class FileTransferer():
+class FileTransferServer():
     def __init__(self, filepath, backlog=1):
         assert isinstance(filepath, str)
         assert isinstance(backlog, int)
