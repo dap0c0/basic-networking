@@ -1,6 +1,6 @@
 #!/usr/bin/bash
 import argparse
-from FileTransferer import FileTransferer
+from FileTransferServer import FileTransferServer
 from FileTransferClient import FileTransferClient
 
 parser = argparse.ArgumentParser(description="Basic File Transfer in server-client model")
@@ -40,10 +40,10 @@ if server:
             server = None
 
             if backlog == 1:
-                server = FileTransferer(filepath)
+                server = FileTransferServer(filepath)
 
             else:
-                server = FileTransferer(filepath, backlog)
+                server = FileTransferServer(filepath, backlog)
             
             server.send_file()
 
@@ -57,6 +57,6 @@ elif client:
 
     else:
         ft_client = FileTransferClient(host, port)
-        data = ft_client.receive_data()
-        print(data)
+        name, body = ft_client.receive_data()
+        ft_client.write_data(name, body)
 
