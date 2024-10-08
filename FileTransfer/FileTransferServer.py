@@ -26,6 +26,25 @@ class FileTransferServer():
             assert isinstance(time_total, float)
             return time_total
 
+        def send_data(client, data_str):
+            ''' Send data_str to client by first sending size of string, then
+            the contents of data_str. Returns len(data_str)'''
+            assert isinstance(data_str, str)
+            assert client != None
+            data_len = len(data_str)
+             
+            def fx(*args):
+                for arg in args:
+                    arg
+
+            time_total = calculate_time(fx(client.sendall(bytes(str(data_len), "utf-8")),
+                              client.sendall(bytes(data_str, "utf-8"))))
+
+            print("Sent client %d bytes in %f seconds." % 
+                    (data_len, time_total))
+
+            return data_len
+
         self.tcp_sock.bind(("localhost", 50500))
         server_port = self.tcp_sock.getsockname()[1]
         print("FT Server listening on port %d" % server_port)
@@ -40,21 +59,15 @@ class FileTransferServer():
             print("Connected by %s:%s" % (address[0], address[1]))
             
             # Send name of file to client
-            filename = get_file_name(file.name)
             print("Sending name of file to cilent...")
-            buffer = bytes(filename, "utf-8")
-            time_total = calculate_time(client.send(buffer))
-            print("Sent %s:%s %d bytes in %f seconds." % 
-                    (address[0], address[1], len(buffer), time_total))
+            filename = get_file_name(file.name)
+            send_data(client, filename)
             
             # Send data to client
             print("Sending file data to client...")
             data = file.read()
-            buffer = bytes(data, "utf-8")     
-            time_total = calculate_time(client.send(buffer))
-            print("Sent %s:%s %d bytes in %f seconds." % 
-                    (address[0], address[1], len(buffer), time_total))
-            
+            send_data(client, data)
+
             return True
 
         except FileNotFoundError as e:
