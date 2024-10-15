@@ -9,7 +9,7 @@ class PatternExtractor():
 
     def get_matches(self, string):
         ''' Return a list of matches within the string.'''
-        matched_groups = self.pattern.match(string)
+        matched_groups = self.pattern.findall(string)
         return matched_groups
 
     def set_pattern(self, pattern_str):
@@ -18,7 +18,7 @@ class PatternExtractor():
         assert isinstance(pattern_str, str)
 
         if self.in_cache(pattern_str):
-            self.pattern = self.pattern_cache["pattern_str"]
+            self.pattern = self.pattern_cache[pattern_str]
 
         else:
             self.pattern = re.compile(pattern_str)
