@@ -1,6 +1,8 @@
 from abc import ABC, abstractmethod
 from HTTPClient import HTTPClient
 from FileOrganizer import FileOrganizer
+from PatternExtractor import PatternExtractor
+from Queue import LLQueue
 
 class WebCrawler(ABC):
     # Basic hyperlink pattern: scheme://domain.tld/example/path
@@ -15,30 +17,36 @@ class WebCrawler(ABC):
         assert sleep >= 0
         self.seed = seed
         self.sleep = sleep
-        self.results_file = results_file
-        self.file_interface = FileOrganizer(self.results_file)
+        self.data = {} # Each url will contain info regarding external links, emails, files
+
+        # Class drivers
+        self._results_file = results_file
+        self._file_interface = FileOrganizer(self.results_file)
+        self._extractor = PatternExtractor()
+        self._client = HTTPClient() # Host is set per query
 
     @abstractmethod
     def crawl(self):
         pass
 
-    
-    def extract_pattern(self, input, pattern):
-        ''' Return a list of strings matching the pattern, having
-        parsed through input'''
-        matched_groups = pattern.findall(input)
-        return matched_groups
+    def _get_page_source(self, url):
+        ''' Get page sourcecode of url.'''
+        assert url != None
+        assert isinstance(url, str)
+        page_source = self._client.fetch(url)
+        return page_source
 
-    def extract_links(self, input):
-        return self.extract_pattern(input, WebCrawler.HYPERLINK_REGEX_PATTERN)
+    def _extract_links(self, input):
+        ''' Return the hyperlinks present within the input string.'''
+        assert input != None
+        assert isinstance(input, str)
+        self._extractor.set_pattern(WebCrawler.HYPERLINK_REGEX_PATTERN)
+        return self._extractor.get_matches(input)
     
-    def extract_emails(self, input):
+    def _extract_emails(self, input):
         pass
 
-    def write_to_file(self, current_link, links_found):
-        pass
-
-    def get_links(self, current_link):
+    def _write_to_file(self, current_link, links_found):
         pass
 
 class WebCrawlerThreaded(WebCrawler):
