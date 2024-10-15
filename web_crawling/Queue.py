@@ -29,6 +29,7 @@ class LLQueue(Queue):
     def __init__(self):
         self.head = None
         self.tail = None
+        self.size = 0
     
     def is_empty(self):
         return self.head == None and self.tail == None
@@ -44,6 +45,8 @@ class LLQueue(Queue):
             to_queue = Node(obj, None)
             self.tail.link = to_queue
             self.tail = to_queue
+
+        self.size += 1
     
     def dequeue(self):
         ''' Return head of queue.'''
@@ -58,6 +61,7 @@ class LLQueue(Queue):
 
             if dequeued:
                 data = dequeued.data
+                self.size -= 1
 
         return data
 
@@ -71,4 +75,9 @@ class LLQueue(Queue):
             curr = curr.link
         
         return str(content)
+
+    def __abs__(self):
+        ''' Return size of queue.'''
+        assert self.size >= 0
+        return self.size
 
