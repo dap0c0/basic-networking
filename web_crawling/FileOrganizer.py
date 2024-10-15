@@ -3,6 +3,7 @@ import json
 
 class FileOrganizer():
     FILENAME_PATTERN = re.compile(r"\D+\.\w+")
+    DEFAULT_IND_SIZE = 4
 
     def __init__(self, filename):
         assert isinstance(filename, str)
@@ -15,7 +16,7 @@ class FileOrganizer():
         assert isinstance(filename, str)
         return FileOrganizer.FILENAME_PATTERN.search(filename)
     
-    def write_file(self, dictionary, ind):
+    def write_file(self, dictionary, ind=DEFAULT_IND_SIZE):
         ''' Write dictionary in JSON format to file.'''
         assert dictionary != None
         assert ind != None
@@ -25,7 +26,7 @@ class FileOrganizer():
         with open(self.filename, "w", encoding="utf-8") as write_file:
             json.dump(dictionary, write_file, indent=ind)
 
-    def read_file(self, ind):
+    def read_file(self, ind=DEFAULT_IND_SIZE):
         ''' Return the dictionary object from the file.'''
         assert ind != None
         assert isinstance(ind, int)
