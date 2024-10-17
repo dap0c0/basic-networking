@@ -1,5 +1,6 @@
 import argparse
-from WebCrawler import WebCrawlerBasic
+# from WebCrawler import profile
+from WebCrawler import WebCrawlerBasic, WebCrawlerThreaded
 
 def main():
     # def positive(value):
@@ -13,15 +14,23 @@ def main():
     parser.add_argument("-v", "--verbose", action="store_true", dest="debug")
     parser.add_argument("-o", "--output", action="store", dest="output", required=True, type=str)
     parser.add_argument("--sleep", action="store", dest="sleep_time", type=float)
+    parser.add_argument("-t", "--threads", action="store", dest="threads", type=int)
     args = parser.parse_args()
     seed = args.seed
     debug = args.debug
     output = args.output
     sleep_time = args.sleep_time
+    threads = args.threads
     crawler = None
 
+    # Check if crawler should sleep
     if not sleep_time:
-        crawler = WebCrawlerBasic(seed, output)
+        if not threads:
+            crawler = WebCrawlerBasic(seed, output)
+
+        else:
+            crawler = WebCrawlerThreaded(seed, output, threads)
+            print("threaded crawler!!!!")
     
     else:
         if sleep_time < 0:
@@ -29,14 +38,25 @@ def main():
             except argparse.ArgumentTypeError as e:                  # Its just nice that the callstack isn't displayed.
                 print("Error: %s" % e)
 
-        else:
+        if not threads:
             crawler = WebCrawlerBasic(seed, output, sleep_time)
-    
+        
+        else:
+            crawler = WebCrawlerThreaded(seed, output, sleep_time, threads)
+
     # Unleash the crawler. mwhahaahaahahaha
-    if debug:
-        crawler.crawl(debug=True)
-    
+    if not debug:
+        if not threads:
+            crawler.crawl(debug=False)
+        
+        else:
+            crawler.crawl(debug=False, num_threads=threads)
+        
     else:
-        crawler.crawl(debug=False)
+        if not threads:
+            crawler.crawl(debug=True)
+
+        else:
+            crawler.crawl(debug=True, num_threads=threads)
 
 main()
