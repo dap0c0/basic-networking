@@ -80,4 +80,7 @@ class LLQueue(Queue):
         ''' Return size of queue.'''
         assert self.size >= 0
         return self.size
-
+    
+    def __len__(self):
+        assert self.size >= 0
+        return self.size
