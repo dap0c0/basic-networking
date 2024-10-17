@@ -7,7 +7,7 @@ def main():
     #     if value < 0:
     #         raise argparse.ArgumentTypeError("Numeric value %s must be >= 0" % value)
     # I don't know how to incorporate error checking for positive values into the argparse module, hehe.
-    # I will just resort to if statements
+    # I will just resort to if statements.
 
     parser = argparse.ArgumentParser(description="Rudimentary web crawler.")
     parser.add_argument("-s", "--seed", action="store", dest="seed", required=True, type=str)

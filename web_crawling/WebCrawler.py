@@ -13,6 +13,7 @@ from Queue import LLQueue
 #     with Profile() as profile:
 #         fx
 #         Stats(profile).strip_dirs().sort_stats(SortKey.CALLS).print_stats()
+#
 
 class WebCrawler(ABC):
     # Basic hyperlink pattern: scheme://domain.tld/example/path
