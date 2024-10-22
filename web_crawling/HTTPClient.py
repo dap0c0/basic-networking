@@ -1,7 +1,9 @@
 import re
+import urllib.parse
 import urllib.request
 import urllib.error
 from http.client import RemoteDisconnected
+import http.client
 import socket
 import ssl
 from PatternExtractor import PatternExtractor
@@ -9,7 +11,7 @@ from PatternExtractor import PatternExtractor
 # TODO:
 # - need to connect to 443 depending on if HTTPS is in url (done)
 # - need to organize code
-#   - delegate scheme and domain name scanning to pattern extractor
+#   - delegate scheme and domain name scanning to pattern extractor (done)
 #   - ask urself what are the necessary private vars (url? curr_host?) (done)
 # - finish grep extraction for paths
 # - finish grep extraction for get queries
@@ -44,15 +46,14 @@ class HTTPClientUnblocked(HTTPClient):
     HTTP_PORT = 80
     HTTPS_PORT = 443
     HTTP_VERSION = 1.1
-    HTTPS_VERSION = 2.0
+    HTTPS_VERSION = 2
     COM_GET = "GET"
     COM_POST = "POST"
     COM_PUT = "PUT"
     COM_DELETE = "DELETE"
     DEFAULT_BUFFER_SIZE = 1024
-    HYPERLINK_REGEX_PATTERN = r"(\w+://)([a-zA-Z0-9-_]+\.)+([a-z]*)(/[a-zA-Z0-9-_]+)*/?"
-    DOMAIN_NAME_CATCHER = r"\w+://((?:[a-zA-Z0-9-_]+\.?)+)"
-    SCHEME_CATCHER = r"(\w+)://"
+    LINK_CATCHER = r"(\w+)://((?:[a-zA-Z0-9-_]+\.?)+)(.*)" 
+    HTML_DELIMITER = "<!DOCTYPE html>"
 
     def __init__(self):
         try:
@@ -63,7 +64,7 @@ class HTTPClientUnblocked(HTTPClient):
             self._host = None
             self._port = None
             self._scheme = None
-            self._path = None
+            self._path_params = None
             self._http_version = None
             self._bufsize = HTTPClientUnblocked.DEFAULT_BUFFER_SIZE
             self._extractor = PatternExtractor()
@@ -71,23 +72,32 @@ class HTTPClientUnblocked(HTTPClient):
         except socket.gaierror as e:
             print("Error creating socket: %s" % e)
 
+    def _decode(self, response_bytes):
+        assert isinstance(response_bytes, bytes)
+
+
     def fetch(self, url, **kargs):
         assert isinstance(url, str)
         
         # Connect to new host on port if not previously set
         if url != self.url:
-            # Get domain name
-            self._extractor.set_pattern(HTTPClientUnblocked.DOMAIN_NAME_CATCHER)
-            self._host = self._extractor.get_matches(url)[0]
-            self._port = self._decide_port(url)
+            # Capture all important groups of url
+            self._extractor.set_pattern(HTTPClientUnblocked.LINK_CATCHER)
+            matches = self._extractor.get_matches(url)[0] # [0] is accessed bc extractor returns a tuple in a list
+            self._scheme = matches[0]
+            self._host = matches[1]
+            self._path_params = matches[2]
+            
+            # Decide on port depending on scheme, then connect
+            self._port = self._decide_port(self._scheme)
             assert self._port != None
             connecting_addr = (self._host, self._port)
 
             # Change HTTP version and encrypt communication if necesarry
             if self._port == HTTPClientUnblocked.HTTPS_PORT:
-                self._http_version = HTTPClientUnblocked.HTTPS_VERSION
+                # self._http_version = HTTPClientUnblocked.HTTPS_VERSION
+                self._http_version = HTTPClientUnblocked.HTTP_VERSION
                 cont = ssl.create_default_context()
-                print(self._host.__class__)
                 self._sock = cont.wrap_socket(self._sock, do_handshake_on_connect=True, server_hostname=self._host)
             
             else:
@@ -108,21 +118,61 @@ class HTTPClientUnblocked(HTTPClient):
             url_extras = url[len_bf_path:len(url)]
             self._path = url_extras
 
-        print(url_extras)
-        
         # Send request to host
         request_buffer = self._generate_request("GET", url_extras, self._http_version, **kargs)
         print("Request: [%s]" % request_buffer)
         self._sock.sendall(request_buffer)
         data = self._recv_data()
         return data
+    
+    def _get_html(self, response):
+        ''' Return the html content of the response.'''
+        assert isinstance(response, bytes)
+        html = None
+    
+        try:
+            response_str = str(response, "utf-8")
+            data_split = response_str.split(HTTPClientUnblocked.HTML_DELIMITER)
+            assert len(data_split) == 2
+            html = data_split[1]
+        
+        except UnicodeDecodeError as e:
+            print("Error decoding data: %s" % e)
+        
+        except AssertionError as e:
+            print("HTML not included in response: %s" % e)
+        
+        return html
+    
+    def _get_headers(self, response):
+        ''' Return the header content (with error code) of the response.'''
+        assert isinstance(response, bytes)
+        headers = None
+        status_code = self._get_status_code(response)
 
-    def _decide_port(self, url):
+        try:
+            response_str = str(response, "utf")
+            data_split = response_str.split(HTTPClientUnblocked.HTML_DELIMITER)
+            assert len(data_split) == 2
+            headers = data_split[0]
+
+        except UnicodeDecodeError as e:
+            print("Error decoding data: %s" % e)
+        
+        return headers
+
+    def _get_status_code(self, response):
+        ''' Return the status code of the response.'''
+        assert isinstance(response, str)
+        first_car_ret = response.find("\r\n")
+        stat_msg = response[0:first_car_ret]
+        stat_code = int(stat_msg.split(" ")[1]) # HTTP/$version $status $message
+        return stat_code
+
+    def _decide_port(self, scheme):
         ''' Decide on the outgoing port to connect to depending
         on the scheme of the url.'''
-        assert isinstance(url, str)
-        self._extractor.set_pattern(HTTPClientUnblocked.SCHEME_CATCHER)
-        scheme = self._extractor.get_matches(url)[0]
+        assert isinstance(scheme, str)
         port = None
 
         if scheme == "http":
@@ -173,64 +223,3 @@ class HTTPClientUnblocked(HTTPClient):
                 return data
 
             data += received
-    
-    # def get_scheme(self, url):
-    #     assert isinstance(url, str)
-    #     scheme = None
-    #     matches = re.findall(HTTPClientUnblocked.SCHEME_CATCHER, url)
-        
-    #     if matches:
-    #         scheme = matches[0] # url scheme is the first and only capturing group)
-        
-    #     return scheme
-    
-    # def get_domain_name(self, url):
-    #     assert isinstance(url, str)
-    #     link = None
-    #     matches = re.findall(HTTPClientUnblocked.DOMAIN_NAME_CATCHER, url)
-
-    #     if matches:
-    #         link = matches[0]
-    #         assert isinstance(link, str)
-        
-    #     return link
-    
-    # def get_path(self, url):
-    #     assert isinstance(url, str)
-    #     path = None
-    #     matches = re.findall(HTTPClientUnblocked.PATH_CATCHER, url)
-    #     print(matches)
-
-    #     if matches:
-    #         link = matches[0]
-    #         assert isinstance(link, str)
-        
-    #     return link
-
-
-# client = HTTPClientUnblocked()
-# data = client.fetch("youtube.com", Connection="Close")
-# print(data)
-
-# client = HTTPClientUnblocked()
-# scheme = client.get_scheme("bruh://youtube.com")
-# domain_name = client.get_domain_name("https://natas.labs.overthewire.org/bruh")
-# print(scheme)
-# print(domain_name)
-def print_stats(client, url):
-    print("URL: %s\nScheme: %s\nDomain-Name: %s\nPath: %s" % (client.url, client._scheme, client._host, client._path))
-
-def test_vim():
-    client = HTTPClientUnblocked()
-    url = "https://www.vim.org/"
-    data = client.fetch(url, Connection="close", Host="www.vim.org")
-    print(str(data, "utf-8"))
-
-def test_pressbooks():
-    client = HTTPClientUnblocked()
-    url = "https://www.musictheory.net/exercises"
-    data = client.fetch(url, Connection="close")
-    print_stats(client, url)
-    print(data)
-
-test_pressbooks()
