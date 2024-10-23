@@ -3,10 +3,10 @@ import urllib.parse
 import urllib.request
 import urllib.error
 from http.client import RemoteDisconnected
-import http.client
 import socket
 import ssl
 from PatternExtractor import PatternExtractor
+from HTTPResponse import HTTPResponse
 
 # TODO:
 # - need to connect to 443 depending on if HTTPS is in url (done)
@@ -53,7 +53,6 @@ class HTTPClientUnblocked(HTTPClient):
     COM_DELETE = "DELETE"
     DEFAULT_BUFFER_SIZE = 1024
     LINK_CATCHER = r"(\w+)://((?:[a-zA-Z0-9-_]+\.?)+)(.*)" 
-    HTML_DELIMITER = "<!DOCTYPE html>"
 
     def __init__(self):
         try:
@@ -71,9 +70,6 @@ class HTTPClientUnblocked(HTTPClient):
         
         except socket.gaierror as e:
             print("Error creating socket: %s" % e)
-
-    def _decode(self, response_bytes):
-        assert isinstance(response_bytes, bytes)
 
 
     def fetch(self, url, **kargs):
@@ -122,52 +118,8 @@ class HTTPClientUnblocked(HTTPClient):
         request_buffer = self._generate_request("GET", url_extras, self._http_version, **kargs)
         print("Request: [%s]" % request_buffer)
         self._sock.sendall(request_buffer)
-        data = self._recv_data()
-        return data
-    
-    def _get_html(self, response):
-        ''' Return the html content of the response.'''
-        assert isinstance(response, bytes)
-        html = None
-    
-        try:
-            response_str = str(response, "utf-8")
-            data_split = response_str.split(HTTPClientUnblocked.HTML_DELIMITER)
-            assert len(data_split) == 2
-            html = data_split[1]
-        
-        except UnicodeDecodeError as e:
-            print("Error decoding data: %s" % e)
-        
-        except AssertionError as e:
-            print("HTML not included in response: %s" % e)
-        
-        return html
-    
-    def _get_headers(self, response):
-        ''' Return the header content (with error code) of the response.'''
-        assert isinstance(response, bytes)
-        headers = None
-        status_code = self._get_status_code(response)
-
-        try:
-            response_str = str(response, "utf")
-            data_split = response_str.split(HTTPClientUnblocked.HTML_DELIMITER)
-            assert len(data_split) == 2
-            headers = data_split[0]
-
-        except UnicodeDecodeError as e:
-            print("Error decoding data: %s" % e)
-        
-        return headers
-
-    def _get_status_code(self, response):
-        ''' Return the status code of the response.'''
-        assert isinstance(response, str)
-        first_car_ret = response.find("\r\n")
-        stat_msg = response[0:first_car_ret]
-        stat_code = int(stat_msg.split(" ")[1]) # HTTP/$version $status $message
-        return stat_code
+        response = self._recv_data()
+        return response
 
     def _decide_port(self, scheme):
         ''' Decide on the outgoing port to connect to depending
@@ -213,13 +165,13 @@ class HTTPClientUnblocked(HTTPClient):
         return bytes(message, "utf-8")
 
     def _recv_data(self):
-        ''' Receive data from the host'''
+        ''' Receive data from the host and return as HTTPResponse'''
         data = b""
 
         while True:
             received = self._sock.recv(self._bufsize)
 
             if len(received) == 0:
-                return data
+                return HTTPResponse(data)
 
             data += received
