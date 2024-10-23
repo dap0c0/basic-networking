@@ -20,7 +20,7 @@ class HTTPResponse():
         ''' Return the status code of the response.'''
         assert isinstance(data_str, str)
         first_car_ret_ind = data_str.find("\r\n")
-        stat_msg = self._data[0:first_car_ret_ind]
+        stat_msg = data_str[0:first_car_ret_ind]
         stat_code = int(stat_msg.split(" ")[1]) # HTTP/$version $status $message
         return stat_code
  
@@ -44,19 +44,21 @@ class HTTPResponse():
 
     def _decode(self, buffsize):
         ''' Decode byte data depending on the encoding.'''
-        assert self._data != None
+        assert self._data_bytes != None
         assert isinstance(buffsize, int)
         assert buffsize > 0
         charset = HTTPResponse.CHAR_SET_DEFAULT # should be utf-8
         decoded_data = ""
         curr_len = 0
         start = 0
-        end = buffsize - 1
+        end = buffsize 
         decode_error = False
 
+        # Try decoding the entire buffer (self._data_bytes).
         while curr_len < len(self._data_bytes) and not decode_error:
             try:
-                byte_segment = self._data[start:end]
+                byte_segment = self._data_bytes[start:end]
+                assert len(byte_segment) <= buffsize
                 decoded_data += str(byte_segment, charset)
                 
                 # Move segment focus
@@ -69,9 +71,10 @@ class HTTPResponse():
 
         # Get the charset in the already decoded data if error found
         if not decode_error:
-            assert curr_len > len(self._data_bytes)
+            assert curr_len == len(self._data_bytes)
         
         else:
+            # Start search for charset subheader, located in Content-Type header.
             lines = decoded_data.split("\r\n")
             charset = None
             curr_line = None
@@ -81,7 +84,7 @@ class HTTPResponse():
 
             # Keep cycling through lines until exhausted or charset subheader found
             while not charset and i < len(lines):
-                curr_line = decoded_data[i]
+                curr_line = lines[i]
                 matches = extractor.get_matches(curr_line)
 
                 if matches:
@@ -92,12 +95,12 @@ class HTTPResponse():
                     i += 1
 
             if charset:
-                decoded_data = str(self._data, charset)
+                decoded_data = str(self._data_bytes, charset)
             
             else:
                 raise UnicodeDecodeError("Could not find decoding scheme of data.")
             
         return decoded_data
-
-
     
+    def __repr__(self):
+        return self.content
