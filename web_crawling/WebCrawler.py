@@ -4,7 +4,7 @@ from pstats import SortKey, Stats
 import time
 import threading
 from abc import ABC, abstractmethod
-from HTTPClient import HTTPClient
+from HTTPClient import HTTPClient, HTTPClientUnblocked
 from FileOrganizer import FileOrganizer
 from PatternExtractor import PatternExtractor
 from Queue import LLQueue
@@ -32,7 +32,8 @@ class WebCrawler(ABC):
         self._results_file = results_file
         self._file_interface = FileOrganizer(self._results_file)
         self._extractor = PatternExtractor()
-        self._client = HTTPClient() # Host is set per query
+        # self._client = HTTPClientUnblocked() # Host is set per query
+        self._client = HTTPClient()
         self._queue = LLQueue()
         self._explored_links = []
 
@@ -52,7 +53,7 @@ class WebCrawler(ABC):
         assert input != None
         assert isinstance(input, str)
         self._extractor.set_pattern(WebCrawler.HYPERLINK_REGEX_PATTERN)
-        return self._extractor.get_matches(input)
+        return self._extractor.matches(input)
     
     def _extract_emails(self, input):
         pass
