@@ -4,7 +4,6 @@ import asyncio
 import urllib.parse
 import urllib.request
 import urllib.error
-from http.client import RemoteDisconnected
 import socket
 import ssl
 from PatternExtractor import PatternExtractor
@@ -47,8 +46,8 @@ class HTTPClient(ABC):
 
             # Change HTTP version and encrypt communication if necesarry
             if self._port == HTTPClient.HTTPS_PORT:
-                self._http_version = HTTPClient.HTTPS_VERSION
-                # self._http_version = HTTPClient.HTTP_VERSION
+                # self._http_version = HTTPClient.HTTPS_VERSION
+                self._http_version = HTTPClient.HTTP_VERSION
                 cont = ssl.create_default_context()
                 self._sock = cont.wrap_socket(self._sock, do_handshake_on_connect=True, server_hostname=self._host)
 
@@ -69,11 +68,11 @@ class HTTPClient(ABC):
         port = None
 
         if scheme == "http":
-            port = HTTPClientUnblocked.HTTP_PORT
+            port = HTTPClient.HTTP_PORT
             self._scheme = "http"
 
         elif scheme == "https":
-            port = HTTPClientUnblocked.HTTPS_PORT
+            port = HTTPClient.HTTPS_PORT
             self._scheme = "https"
 
         return port
@@ -91,7 +90,7 @@ class HTTPClient(ABC):
         request_header = "%s %s HTTP/%s\r\n" % (command, path, http_vers)
         message += request_header
 
-        # Add additional headers as needed
+        # Add headers as needed
         if kargs:
             for karg in kargs:
                 header = karg
@@ -105,75 +104,6 @@ class HTTPClient(ABC):
         message += "\r\n"
         return bytes(message, "utf-8")
 
-class HTTPClientBlocked(HTTPClient):
-    def fetch(self, **kargs):
-        ''' Get the sourcecode of the given url. Returns
-        none upon error.'''
-        result = None
+    def __repr__(self):
+        return f"({self._host}, {self._port}, {self._path_params})"
 
-        try:
-            response = urllib.request.urlopen(self._host)
-            data = response.read()
-            text = data.decode("utf-8")
-            result = text
-
-        except UnicodeDecodeError as e:
-            print("Could not decode data: %s" % e)
-        
-        except urllib.error.HTTPError as e:
-            print(e)
-
-        except urllib.error.URLError as e:
-            print(e)
-
-        except RemoteDisconnected as e:
-            print("Encountered error for %s" % self._host)
-            
-        return result
-
-class HTTPClientUnblocked(HTTPClient):
-    def fetch(self, **kargs):
-    # Connect to new host on port if not previously set
-        try:
-            connecting_addr = (self._host, self._port)
-            self._sock.connect((connecting_addr))
-        
-        except socket.gaierror as e:
-            print("Error connecting to host: %s" % e)
-            return
-    
-        # Send request to host
-        request_buffer = self._generate_request("GET", self._path_params, self._http_version, **kargs)
-        print("Request: [%s]" % request_buffer)
-        self._sock.sendall(request_buffer)
-        response = self._recv_data()
-        return response
-
-    def _recv_data(self):
-        ''' Receive data from the host and return as HTTPResponse'''
-        data = b""
-
-        while True:
-            received = self._sock.recv(self._bufsize)
-
-            if len(received) == 0:
-                return HTTPResponse(data)
-
-            data += received
-
-class HTTPClientAsynchronous(HTTPClientUnblocked):
-    async def fetch(self, **kwargs):
-        try:
-            connecting_addr = (self._host, self._port)
-            await self._sock.connect((connecting_addr))
-        
-        except socket.gaierror as e:
-            print("Error connecting to host: %s" % e)
-            return
-        
-        # Send request to host
-        request_buffer = self._generate_request("GET", self._path_params, self._http_version, **kwargs)
-        print("Request: [%s]" % request_buffer)
-        await self._sock.sendall(request_buffer)
-        response = self._recv_data()
-        return response
