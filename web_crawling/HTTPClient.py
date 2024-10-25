@@ -1,4 +1,6 @@
 import re
+from abc import ABC, abstractmethod
+import asyncio
 import urllib.parse
 import urllib.request
 import urllib.error
@@ -8,41 +10,7 @@ import ssl
 from PatternExtractor import PatternExtractor
 from HTTPResponse import HTTPResponse
 
-# TODO:
-# - need to connect to 443 depending on if HTTPS is in url (done)
-# - need to organize code
-#   - delegate scheme and domain name scanning to pattern extractor (done)
-#   - ask urself what are the necessary private vars (url? curr_host?) (done)
-# - finish grep extraction for paths
-# - finish grep extraction for get queries
-
-class HTTPClient():
-    def fetch(self, host):
-        ''' Get the sourcecode of the given url. Returns
-        none upon error.'''
-        result = None
-
-        try:
-            response = urllib.request.urlopen(host)
-            data = response.read()
-            text = data.decode("utf-8")
-            result = text
-
-        except UnicodeDecodeError as e:
-            print("Could not decode data: %s" % e)
-        
-        except urllib.error.HTTPError as e:
-            print(e)
-
-        except urllib.error.URLError as e:
-            print(e)
-
-        except RemoteDisconnected as e:
-            print("Encountered error for %s" % host)
-            
-        return result
-
-class HTTPClientUnblocked(HTTPClient):
+class HTTPClient(ABC):
     HTTP_PORT = 80
     HTTPS_PORT = 443
     HTTP_VERSION = 1.1
@@ -54,72 +22,45 @@ class HTTPClientUnblocked(HTTPClient):
     DEFAULT_BUFFER_SIZE = 1024
     LINK_CATCHER = r"(\w+)://((?:[a-zA-Z0-9-_]+\.?)+)(.*)" 
 
-    def __init__(self):
+    def __init__(self, url):
+        self._url = url
+
         try:
+            # Create socket for future communication
             self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            # self._sock.setblocking(0)
-            self.url = None
-            self._host = None
-            self._port = None
-            self._scheme = None
-            self._path_params = None
-            self._http_version = None
-            self._bufsize = HTTPClientUnblocked.DEFAULT_BUFFER_SIZE
-            self._extractor = PatternExtractor()
-        
-        except socket.gaierror as e:
-            print("Error creating socket: %s" % e)
 
-
-    def fetch(self, url, **kargs):
-        assert isinstance(url, str)
-        
-        # Connect to new host on port if not previously set
-        if url != self.url:
             # Capture all important groups of url
-            self._extractor.set_pattern(HTTPClientUnblocked.LINK_CATCHER)
-            matches = self._extractor.get_matches(url)[0] # [0] is accessed bc extractor returns a tuple in a list
+            temp_xtr = PatternExtractor()
+            temp_xtr.set_pattern(HTTPClient.LINK_CATCHER)
+            matches = temp_xtr.get_matches(url)[0] # [0] is accessed bc extractor returns a tuple in a list
+            
+            # Set scheme, host, path for future query
             self._scheme = matches[0]
             self._host = matches[1]
             self._path_params = matches[2]
-            
+
             # Decide on port depending on scheme, then connect
             self._port = self._decide_port(self._scheme)
             assert self._port != None
             connecting_addr = (self._host, self._port)
 
             # Change HTTP version and encrypt communication if necesarry
-            if self._port == HTTPClientUnblocked.HTTPS_PORT:
-                # self._http_version = HTTPClientUnblocked.HTTPS_VERSION
-                self._http_version = HTTPClientUnblocked.HTTP_VERSION
+            if self._port == HTTPClient.HTTPS_PORT:
+                self._http_version = HTTPClient.HTTPS_VERSION
+                # self._http_version = HTTPClient.HTTP_VERSION
                 cont = ssl.create_default_context()
                 self._sock = cont.wrap_socket(self._sock, do_handshake_on_connect=True, server_hostname=self._host)
-            
+
             else:
-                self._http_version = HTTPClientUnblocked.HTTP_VERSION
+                self._http_version = HTTPClient.HTTP_VERSION
 
-            try:
-                self._sock.connect((connecting_addr))
-            
-            except socket.gaierror as e:
-                print("Error connecting to host: %s" % e)
-                return
-            
-        # Check if url contains path, parameters, or anchors
-        url_extras = "/"
-        len_bf_path = len(self._scheme) + len("://") + len(self._host)
-
-        if len(url) != len_bf_path:
-            url_extras = url[len_bf_path:len(url)]
-            self._path = url_extras
-
-        # Send request to host
-        request_buffer = self._generate_request("GET", url_extras, self._http_version, **kargs)
-        print("Request: [%s]" % request_buffer)
-        self._sock.sendall(request_buffer)
-        response = self._recv_data()
-        return response
+        except socket.error as e:
+            print("Error creating socket: %s" % e)
+        
+    @abstractmethod
+    def fetch(self, **kwargs):
+        pass
 
     def _decide_port(self, scheme):
         ''' Decide on the outgoing port to connect to depending
@@ -164,6 +105,50 @@ class HTTPClientUnblocked(HTTPClient):
         message += "\r\n"
         return bytes(message, "utf-8")
 
+class HTTPClientBlocked(HTTPClient):
+    def fetch(self, **kargs):
+        ''' Get the sourcecode of the given url. Returns
+        none upon error.'''
+        result = None
+
+        try:
+            response = urllib.request.urlopen(self._host)
+            data = response.read()
+            text = data.decode("utf-8")
+            result = text
+
+        except UnicodeDecodeError as e:
+            print("Could not decode data: %s" % e)
+        
+        except urllib.error.HTTPError as e:
+            print(e)
+
+        except urllib.error.URLError as e:
+            print(e)
+
+        except RemoteDisconnected as e:
+            print("Encountered error for %s" % self._host)
+            
+        return result
+
+class HTTPClientUnblocked(HTTPClient):
+    def fetch(self, **kargs):
+    # Connect to new host on port if not previously set
+        try:
+            connecting_addr = (self._host, self._port)
+            self._sock.connect((connecting_addr))
+        
+        except socket.gaierror as e:
+            print("Error connecting to host: %s" % e)
+            return
+    
+        # Send request to host
+        request_buffer = self._generate_request("GET", self._path_params, self._http_version, **kargs)
+        print("Request: [%s]" % request_buffer)
+        self._sock.sendall(request_buffer)
+        response = self._recv_data()
+        return response
+
     def _recv_data(self):
         ''' Receive data from the host and return as HTTPResponse'''
         data = b""
@@ -175,3 +160,20 @@ class HTTPClientUnblocked(HTTPClient):
                 return HTTPResponse(data)
 
             data += received
+
+class HTTPClientAsynchronous(HTTPClientUnblocked):
+    async def fetch(self, **kwargs):
+        try:
+            connecting_addr = (self._host, self._port)
+            await self._sock.connect((connecting_addr))
+        
+        except socket.gaierror as e:
+            print("Error connecting to host: %s" % e)
+            return
+        
+        # Send request to host
+        request_buffer = self._generate_request("GET", self._path_params, self._http_version, **kwargs)
+        print("Request: [%s]" % request_buffer)
+        await self._sock.sendall(request_buffer)
+        response = self._recv_data()
+        return response
