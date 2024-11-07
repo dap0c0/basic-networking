@@ -70,7 +70,7 @@ class TwistedWebCrawler(WebCrawler):
         self._http_responses = {}
         self._errors = {}
 
-    def _promise_http(self, url: str):
+    def _promise_http(self, url: str, debug: bool):
         ''' Promise an http request and return the deferred result. '''
         d = Deferred()
         
@@ -84,7 +84,7 @@ class TwistedWebCrawler(WebCrawler):
             path = "/"
         
         # Allow factory to bridge between our code and the reactor loop
-        factory = SimpleHTTPFactory(d, url, scheme, host, path)
+        factory = SimpleHTTPFactory(d, url, scheme, host, path, debug)
         from twisted.internet import reactor
 
         # Initiate a request on the relevant port
@@ -110,20 +110,38 @@ class TwistedWebCrawler(WebCrawler):
                 ''' Propogate the http_response down the chain
                 to allow for further processing. '''
                 url, http_response = url_http_pair
-                assert isinstance(http_response, bytes)
-                # self._http_responses[url] = http_response # May possibly lead to a memory leak
+                self._http_responses[url] = http_response # May possibly lead to a memory leak
                 return url_http_pair
+
+            # Stopping condition
+            def http_done(http_returned: bool):
+                ''' Stop processing when there are no more links to process.'''
+                # Prompt reactor to promise another http response
+                pass
+
+            # Temp method
+            def react(mutable: list):
+                d = self._promise_http(mutable[0], debug)
+                d.addCallbacks(http_success, http_fail)
+                d.addCallback(add_links)
+                d.addBoth(http_done)
+                url = self._url_queue.dequeue()
+                mutable[0] = url
 
             # Callback 2
             def add_links(url_http_pair: tuple):
                 url, http_response = url_http_pair
                 assert isinstance(http_response, bytes)
                 links = self._extract_links(str(http_response))
+
                 for link in links:
                     self._url_queue.enqueue(link)
+                    from twisted.internet import reactor
+                    curr_url_storage = [link]
+                    reactor.callWhenRunning(react, curr_url_storage)
 
-                print(f"Enqueued {len(links)} links")
-                
+                if debug:
+                    print(f"Enqueued {len(links)} links from {url}")
 
                 if http_response:
                     return True #
@@ -136,34 +154,10 @@ class TwistedWebCrawler(WebCrawler):
                 if debug:
                     print("http failed!!!")
 
-            # Temp method
-            def react(mutable: list):
-                d = self._promise_http(mutable[0])
-                d.addCallbacks(http_success, http_fail)
-                d.addCallback(add_links)
-                d.addBoth(http_done)
-                url = self._url_queue.dequeue()
-                mutable[0] = url
-
-            # Stopping condition
-            def http_done(http_returned: bool):
-                ''' Stop processing when there are no more links to process.'''
-                if not http_returned:
-                    from twisted.internet import reactor
-                    reactor.stop()
-
-                else:
-                    # Prompt reactor to promise another http response
-                    from twisted.internet import reactor
-                    curr_url = self._url_queue.dequeue()
-                    curr_url_storage = [curr_url]
-                    reactor.callWhenRunning(react, curr_url_storage)
 
             # Kickoff processing with the seed url
             print(f"Seed is {self.seed}")
             self._url_queue.enqueue(self.seed)
-
-            # while not self._url_queue.is_empty():
             curr_url = self._url_queue.dequeue()
             curr_url_storage = [curr_url]
 
