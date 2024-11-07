@@ -1,10 +1,12 @@
 from cProfile import Profile
 from pstats import SortKey, Stats
 
+# TODO:
+# rerun the file
 from abc import ABC, abstractmethod
 from FileOrganizer import FileOrganizer
 from PatternExtractor import PatternExtractor
-from Queue import LLQueue
+from Queue import LLQueue, Queue
 
 from twisted.internet.defer import Deferred
 from twisted.internet import ssl
@@ -82,7 +84,7 @@ class TwistedWebCrawler(WebCrawler):
             path = "/"
         
         # Allow factory to bridge between our code and the reactor loop
-        factory = SimpleHTTPFactory(d, scheme, host, path)
+        factory = SimpleHTTPFactory(d, url, scheme, host, path)
         from twisted.internet import reactor
 
         # Initiate a request on the relevant port
@@ -94,53 +96,80 @@ class TwistedWebCrawler(WebCrawler):
 
         return d
 
-    def crawl(self):
-        ''' Begin asynchronous crawl with the initial seed.'''
-        # While queue is nonempty and no keyboard interrupt, proceed
-        assert self.seed != None
+    def crawl(self, debug: bool):
+        assert isinstance(debug, bool)
+        ''' Begin asynchronous crawl from the designated seed.'''
 
-        # Define auxiliary methods for event driven processing
-        # Callback 1
-        def http_success(url: str, http_response: bytes):
-            ''' Propogate the http_response down the chain
-            to allow for further processing. '''
-            assert isinstance(url, str)
-            assert isinstance(http_response, bytes)
-            # self._http_responses[url] = http_response # May possibly lead to a memory leak
-            return http_response
-        
-        # Callback 2
-        def add_links(http_response: bytes):
-            assert isinstance(http_response, bytes)
-            links = self._extract_links(http_response)
-            print(f"{len(links)} links found!")
+        def crawl_driver(debug: bool):
+            # While queue is nonempty and no keyboard interrupt, proceed
+            assert self.seed != None
 
-            for link in links:
-                self._url_queue.enqueue(link)
-            
-        # Errback
-        def http_fail(url: str, err):
-            assert isinstance(url, str)
-            self._errors[url] = err
+            # Define auxiliary methods for event driven processing
+            # Callback 1
+            def http_success(url_http_pair: tuple):
+                ''' Propogate the http_response down the chain
+                to allow for further processing. '''
+                url, http_response = url_http_pair
+                assert isinstance(http_response, bytes)
+                # self._http_responses[url] = http_response # May possibly lead to a memory leak
+                return url_http_pair
 
-        # Stopping condition
-        def http_done(_):
-            ''' Stop processing when there are no more links to process.'''
-            if self._url_queue.is_empty():
-                from twisted.internet import reactor
-                reactor.stop()
+            # Callback 2
+            def add_links(url_http_pair: tuple):
+                url, http_response = url_http_pair
+                assert isinstance(http_response, bytes)
+                links = self._extract_links(str(http_response))
+                for link in links:
+                    self._url_queue.enqueue(link)
 
-        # Kickoff processing with the seed url
-        self._url_queue.enqueue(self.seed)
+                print(f"Enqueued {len(links)} links")
+                
 
-        # while not self._url_queue.is_empty():
-        while True:
+                if http_response:
+                    return True #
+                
+            # Errback
+            def http_fail(url: str, err):
+                assert isinstance(url, str)
+                self._errors[url] = err
+                
+                if debug:
+                    print("http failed!!!")
+
+            # Temp method
+            def react(mutable: list):
+                d = self._promise_http(mutable[0])
+                d.addCallbacks(http_success, http_fail)
+                d.addCallback(add_links)
+                d.addBoth(http_done)
+                url = self._url_queue.dequeue()
+                mutable[0] = url
+
+            # Stopping condition
+            def http_done(http_returned: bool):
+                ''' Stop processing when there are no more links to process.'''
+                if not http_returned:
+                    from twisted.internet import reactor
+                    reactor.stop()
+
+                else:
+                    # Prompt reactor to promise another http response
+                    from twisted.internet import reactor
+                    curr_url = self._url_queue.dequeue()
+                    curr_url_storage = [curr_url]
+                    reactor.callWhenRunning(react, curr_url_storage)
+
+            # Kickoff processing with the seed url
+            print(f"Seed is {self.seed}")
+            self._url_queue.enqueue(self.seed)
+
+            # while not self._url_queue.is_empty():
             curr_url = self._url_queue.dequeue()
-            assert curr_url != None
-            assert isinstance(curr_url, str)
+            curr_url_storage = [curr_url]
 
-            # Request from seed for http
-            d = self._promise_http(curr_url)
-            d.addCallbacks(http_success, http_fail)
-            d.addCallback(add_links)
-            d.addBoth(http_done)
+            from twisted.internet import reactor
+            reactor.callWhenRunning(react, curr_url_storage)
+
+        from twisted.internet import reactor
+        reactor.callWhenRunning(crawl_driver, debug)
+        reactor.run()
