@@ -2,11 +2,12 @@ from ChatServer import ChatServer
 import socket
 import select
 import sys
+import struct
 
 class SelectChatServer(ChatServer):
     DEFAULT_BUFFER_SIZE = 2048
 
-    def __init__(self, port: int, backlog, buffsize: int):
+    def __init__(self, port: int, backlog, buffsize: int=DEFAULT_BUFFER_SIZE):
         super().__init__(port, backlog)
         self.clients = []
         self.buffsize = buffsize
@@ -63,9 +64,20 @@ class SelectChatServer(ChatServer):
 
     def handle_data(self):
         '''Asynchronously receive data from all clients to compose
-        their messages.'''
-        message_map = {client, b"" for client in self.clients}
-        rlist, _, _ = select.select([self.socket], [], [])
+        their messages.
+
+        Each client will send their name in a struct format which
+        must be decoded.'''
+        message_map = dict((client, b"") for client in self.clients)
+        rlist, _, _ = select.select([self.sock], [], [])
+
+        for sock in rlist:
+            if sock == self.sock:
+                # Receive the origin of the message. Then,
+                # receive the message.
+                og_buffer_size = struct.calcsize("HHHHH")
+                og_buffer = self._recv_data(self.sock, og_buffer_size)
+                print(og_buffer)
         
     def _recv_data(self, sock: socket.socket, buffsize: int) -> bytes:
         data = b""
@@ -74,6 +86,7 @@ class SelectChatServer(ChatServer):
             buffer = sock.recv(buffsize)
 
             if len(buffer) == 0:
+                print(f"Returning {data}")
                 return data
 
             else:
@@ -122,7 +135,8 @@ class SelectChatServer(ChatServer):
     def run(self):
         ''' Run the server on the port.'''
         while True:
-            client = self.handle_connection()
-
+            self.handle_connection()
+            self.handle_data()
+            
 server = SelectChatServer(10000, 5)
 server.run()
