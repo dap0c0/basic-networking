@@ -65,12 +65,11 @@ class ChatClient():
                                     int_seq[2],
                                     int_seq[3],
                                     og_port)
-        print("Sending struct")
         self.sock.send(origin_struct)
 
         # Now, send the message
-        print("Sending message")
         self.sock.send(bytes(message, "utf-8"))
+        print(f"Message sent to {self.sock.getpeername()}.")
         
     def _connection_lost(self, addr: tuple):
         ''' Gracefully handle lost connection from server.'''
@@ -82,7 +81,7 @@ class ChatClient():
         data = b""
 
         while True:
-            buffer = sock.recv(self.buffsize)
+            buffer = sock.recvfrom(self.buffsize)
 
             if len(buffer) == 0:
                 return data
@@ -97,14 +96,17 @@ class ChatClient():
             
             while True:
                 try:
-                    # Receive data from the server socket
-                    self._send_message("bruh")
-                    data = self._recv_data(self.sock)
-                    
+                    # Allow the user to type
+                    user_input = input("$ ")
+                    self._send_message(user_input)
+
                     # Display the data on the screen
-                    print(str(data, "utf-8") + "\n")
+                    # data = self._recv_data(self.sock)
+                    # print(str(data, "utf-8") + "\n")
+                    
 
                 except KeyboardInterrupt as e:
+                    print("Exitting....")
                     sys.exit()
 
         except socket.gaierror as e:
