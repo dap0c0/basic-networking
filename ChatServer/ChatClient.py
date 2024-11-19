@@ -2,11 +2,12 @@ import socket
 import struct
 import sys
 import argparse
+import select
 
 class ChatClient():
     DEFAULT_BUFFSIZE = 1048
 
-    def __init__(self, port: int, host: str, buffsize: int=1048, name: str="anon"):
+    def __init__(self, port: int, host: str, buffsize: int=1048, timeout: float=0.0001, name: str="anon"):
         assert isinstance(name, str)
         assert isinstance(port, int)
         assert isinstance(host, str)
@@ -17,11 +18,13 @@ class ChatClient():
         self.name = name
         self.port = port
         self.host = host
+        self.timeout = timeout
         self.buffsize = buffsize
 
         # Manufacture socket for future connection
         try:
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.sock.settimeout(self.timeout)
 
         except socket.error as e:
             print(f"Error creating socket: {e}")
@@ -69,7 +72,6 @@ class ChatClient():
 
         # Now, send the message
         self.sock.send(bytes(message, "utf-8"))
-        print(f"Message sent to {self.sock.getpeername()}.")
         
     def _connection_lost(self, addr: tuple):
         ''' Gracefully handle lost connection from server.'''
@@ -81,29 +83,48 @@ class ChatClient():
         data = b""
 
         while True:
-            buffer = sock.recvfrom(self.buffsize)
+            try:
+                buffer = sock.recv(self.buffsize)
 
-            if len(buffer) == 0:
+            except TimeoutError:
                 return data
 
             else:
+                if len(buffer) == 0:
+                    return data
+
                 data += buffer
 
+    def _display_shell_symbol(self, symbol: str):
+        assert isinstance(symbol, str)
+        sys.stdout.write(symbol)
+        sys.stdout.flush()
+
     def run(self):
-        ''' Connect to the client and run until program exits.'''
+        ''' Connect to the client and run until program exits.
+
+            Allow the client to send data and receive it asynchronously.'''
         try:
             self._connect()
+            self._display_shell_symbol("$ ")
             
             while True:
                 try:
-                    # Allow the user to type
-                    user_input = input("$ ")
-                    self._send_message(user_input)
-
-                    # Display the data on the screen
-                    # data = self._recv_data(self.sock)
-                    # print(str(data, "utf-8") + "\n")
+                    rlist, _, _ = select.select([sys.stdin, self.sock], [], [])
                     
+                    for readable in rlist:
+                        if readable is sys.stdin:
+                            user_input = sys.stdin.readline().strip()
+                            self._send_message(user_input)
+                            self._display_shell_symbol("$ ")
+
+                        if readable is self.sock:
+                            data = self._recv_data(readable)
+
+                            if len(data) != 0:
+                                sys.stdout.write(str(data, "utf-8") + "\n")
+                                sys.stdout.flush()
+                                self._display_shell_symbol("$ ")
 
                 except KeyboardInterrupt as e:
                     print("Exitting....")
