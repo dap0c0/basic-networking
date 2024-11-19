@@ -9,6 +9,8 @@ class ChatServer(ABC):
         assert isinstance(backlog, int)
         assert port >= 0
         assert 0 < backlog and backlog <= ChatServer.MAX_BACKLOG, "Backlog is invalid!"
+        self.port = port
+        self.backlog = backlog
 
     @abstractmethod
     def handle_connection(self):
@@ -19,7 +21,13 @@ class ChatServer(ABC):
         pass
 
     @abstractmethod
-    def connection_closed(self):
+    def handle_data(self):
         pass
-        
 
+    @abstractmethod
+    def connection_closed(self):
+       pass
+
+    @abstractmethod
+    def run(self):
+        pass

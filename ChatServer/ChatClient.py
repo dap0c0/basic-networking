@@ -35,7 +35,6 @@ class ChatClient():
 
         try:
             self.sock.connect(addr)
-            print(f"Peer is {self.sock.getpeername()}")
 
         except socket.gaierror as e:
             print(f"Error connecting to {self.host}.")
@@ -62,16 +61,13 @@ class ChatClient():
 
         # Notify the server about the origin of the message.
         # Format is in HHHH-H (ip address, port)
-        origin_struct = struct.pack("HHHHH",
+        origin_struct = struct.pack("B B B B H",
                                     int_seq[0],
                                     int_seq[1],
                                     int_seq[2],
                                     int_seq[3],
                                     og_port)
-        self.sock.send(origin_struct)
-
-        # Now, send the message
-        self.sock.send(bytes(message, "utf-8"))
+        self.sock.send(origin_struct + bytes(message, "utf-8"))
         
     def _connection_lost(self, addr: tuple):
         ''' Gracefully handle lost connection from server.'''
@@ -122,7 +118,7 @@ class ChatClient():
                             data = self._recv_data(readable)
 
                             if len(data) != 0:
-                                sys.stdout.write(str(data, "utf-8") + "\n")
+                                sys.stdout.write("\r" + str(data, "utf-8") + "\n")
                                 sys.stdout.flush()
                                 self._display_shell_symbol("$ ")
 
