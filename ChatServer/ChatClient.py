@@ -96,6 +96,12 @@ class ChatClient():
         sys.stdout.write(symbol)
         sys.stdout.flush()
 
+    def _exit_client(self, msg: str):
+        assert isinstance(msg, str)
+        sys.stderr.write(msg)
+        self.sock.close()
+        sys.exit()
+
     def run(self):
         ''' Connect to the client and run until program exits.
 
@@ -115,16 +121,19 @@ class ChatClient():
                             self._display_shell_symbol("$ ")
 
                         if readable is self.sock:
-                            data = self._recv_data(readable)
+                            try:
+                                data = self._recv_data(readable)
+
+                            except ConnectionResetError:
+                                self. _exit_client("\rServer has closed.\nExitting client.\n")
 
                             if len(data) != 0:
                                 sys.stdout.write("\r" + str(data, "utf-8") + "\n")
                                 sys.stdout.flush()
                                 self._display_shell_symbol("$ ")
 
-                except KeyboardInterrupt as e:
-                    print("Exitting....")
-                    sys.exit()
+                except KeyboardInterrupt:
+                    self. _exit_client("\rExitting client.\n")
 
         except socket.gaierror as e:
             print(e)
